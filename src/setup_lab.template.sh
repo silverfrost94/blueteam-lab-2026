@@ -308,21 +308,61 @@ setup_labuser() {
   ok "Đã đặt mật khẩu và tạo /home/${LAB_USER}/.ssh"
 }
 
-setup_ssh() {
-  step "4/9 Cho phép SSH bằng mật khẩu (chỉ dùng trong lab)"
-  install -d /etc/ssh/sshd_config.d /run/sshd
-  # Tên tệp bắt đầu bằng 00- để được đọc trước 50-cloud-init.conf
-  printf '# %s: cho phép đăng nhập SSH bằng mật khẩu để thực hành\nPasswordAuthentication yes\n' \
-    "$LAB_NAME" > /etc/ssh/sshd_config.d/00-lab.conf
-  if ! grep -qE '^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\.d/\*\.conf' /etc/ssh/sshd_config; then
-    sed -i '1i Include /etc/ssh/sshd_config.d/*.conf' /etc/ssh/sshd_config
-  fi
+# Giá trị PasswordAuthentication sshd đang dùng thật (rỗng nếu sshd -T không đọc được)
+ssh_pw_auth() {
+  local v
+  v=$(sshd -T -C "user=${LAB_USER},host=localhost,addr=127.0.0.1" 2>/dev/null | awk '/^passwordauthentication/ { print $2; exit }') || true
+  [ -n "$v" ] || v=$(sshd -T 2>/dev/null | awk '/^passwordauthentication/ { print $2; exit }') || true
+  printf '%s' "$v"
+}
+
+ssh_reload() {
   sshd -t || die "Cấu hình SSH bị lỗi, xem thông báo ở trên"
   systemctl enable ssh >/dev/null 2>&1 || true
   systemctl restart ssh 2>/dev/null || systemctl restart sshd
-  [ "$(sshd -T 2>/dev/null | awk '/^passwordauthentication/ { print $2 }')" = yes ] \
-    || die "SSH vẫn chưa cho đăng nhập bằng mật khẩu. Kiểm tra các tệp trong /etc/ssh/sshd_config.d/"
-  ok "passwordauthentication yes"
+}
+
+setup_ssh() {
+  step "4/9 Cho phép SSH bằng mật khẩu (chỉ dùng trong lab)"
+  install -d /etc/ssh/sshd_config.d /run/sshd
+  # sshd lấy giá trị gặp đầu tiên; tên 00-0-... đứng trước mọi tệp khác trong sshd_config.d
+  rm -f /etc/ssh/sshd_config.d/00-lab.conf
+  printf '# %s: cho phép đăng nhập SSH bằng mật khẩu để thực hành\nPasswordAuthentication yes\n' \
+    "$LAB_NAME" > /etc/ssh/sshd_config.d/00-0-blueteam-lab.conf
+  if ! grep -qE '^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\.d/\*\.conf' /etc/ssh/sshd_config; then
+    sed -i '1i Include /etc/ssh/sshd_config.d/*.conf' /etc/ssh/sshd_config
+  fi
+  ssh_reload
+
+  local v f
+  v=$(ssh_pw_auth)
+  if [ "$v" = no ]; then
+    # Còn tệp khác đặt "no" và được đọc trước: vô hiệu các dòng đó (có lưu bản gốc .lab-bak)
+    for f in /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf; do
+      [ -f "$f" ] || continue
+      case "$f" in */00-0-blueteam-lab.conf) continue ;; esac
+      if grep -qiE '^[[:space:]]*PasswordAuthentication[[:space:]]+no' "$f"; then
+        [ -f "$f.lab-bak" ] || cp -p "$f" "$f.lab-bak"
+        sed -i -E 's/^([[:space:]]*)(PasswordAuthentication[[:space:]]+no)/\1# Blue Team Lab: \2/I' "$f"
+        warn "Đã tắt dòng 'PasswordAuthentication no' trong $f (bản gốc: $f.lab-bak)"
+      fi
+    done
+    ssh_reload
+    v=$(ssh_pw_auth)
+  fi
+
+  case "$v" in
+    yes)
+      ok "passwordauthentication yes" ;;
+    no)
+      say "         Các dòng PasswordAuthentication đang có:"
+      grep -rniH 'PasswordAuthentication' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/ 2>/dev/null | sed 's/^/           /' || true
+      die "SSH vẫn chưa cho đăng nhập bằng mật khẩu, xem các dòng ở trên" ;;
+    *)
+      # sshd -T không in được cấu hình (gặp trên vài bản OpenSSH mới); mặc định của OpenSSH là yes
+      warn "Không đọc được cấu hình hiệu lực bằng 'sshd -T', vẫn tiếp tục vì tệp lab đã đặt PasswordAuthentication yes"
+      sshd -T 2>&1 >/dev/null | head -3 | sed 's/^/           /' || true ;;
+  esac
 }
 
 setup_ossec() {
@@ -563,8 +603,17 @@ if [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = yes ]; then 
 else bad "Đồng hồ chưa đồng bộ" "sudo timedatectl set-ntp true, đợi vài phút"; fi
 if id labuser >/dev/null 2>&1 && [ -d /home/labuser/.ssh ]; then good "Có tài khoản labuser và /home/labuser/.ssh"
 else bad "Thiếu tài khoản labuser hoặc thư mục .ssh" "chạy lại setup_lab.sh"; fi
-if [ "$(sshd -T 2>/dev/null | awk '/^passwordauthentication/ { print $2 }')" = yes ]; then good "SSH cho đăng nhập bằng mật khẩu"
-else bad "SSH chưa cho đăng nhập bằng mật khẩu" "kiểm tra /etc/ssh/sshd_config.d/00-lab.conf, rồi sudo systemctl restart ssh"; fi
+pw=$(sshd -T -C user=labuser,host=localhost,addr=127.0.0.1 2>/dev/null | awk '/^passwordauthentication/ { print $2; exit }')
+[ -n "$pw" ] || pw=$(sshd -T 2>/dev/null | awk '/^passwordauthentication/ { print $2; exit }')
+case "$pw" in
+  yes) good "SSH cho đăng nhập bằng mật khẩu" ;;
+  no)  bad "SSH chưa cho đăng nhập bằng mật khẩu" "tìm dòng 'PasswordAuthentication no': sudo grep -rni passwordauthentication /etc/ssh/, sửa thành yes rồi sudo systemctl restart ssh" ;;
+  *)   if grep -qi '^PasswordAuthentication yes' /etc/ssh/sshd_config.d/00-0-blueteam-lab.conf 2>/dev/null; then
+         info "Không đọc được cấu hình SSH bằng sshd -T, tệp lab đã đặt PasswordAuthentication yes"
+       else bad "Chưa cấu hình SSH bằng mật khẩu" "chạy lại setup_lab.sh"; fi ;;
+esac
+if systemctl is-active --quiet ssh || systemctl is-active --quiet sshd; then good "Dịch vụ SSH đang chạy"
+else bad "Dịch vụ SSH không chạy" "sudo systemctl enable --now ssh"; fi
 if command -v tcpdump >/dev/null; then good "Đã có tcpdump"; else bad "Chưa có tcpdump" "sudo apt install -y tcpdump"; fi
 if [ -f /var/log/auth.log ] && grep -q '<location>/var/log/auth.log</location>' "$OSSEC"; then good "Wazuh đọc /var/log/auth.log"
 else bad "Wazuh chưa đọc /var/log/auth.log" "sudo apt install -y rsyslog, rồi chạy lại setup_lab.sh"; fi
