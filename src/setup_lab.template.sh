@@ -94,6 +94,11 @@ client_ip() {
   is_ipv4 "$ip" && printf '%s' "$ip" || true
 }
 
+mem_mb() { awk '/MemTotal/ { printf "%d", $2 / 1024 }' /proc/meminfo; }
+
+# Dưới 7 GB RAM thì bật chế độ tiết kiệm bộ nhớ: thêm swap, tắt quét lỗ hổng
+low_mem() { [ "$(mem_mb)" -lt 7000 ]; }
+
 wazuh_ok() {
   local s
   for s in wazuh-indexer wazuh-manager wazuh-dashboard; do
@@ -161,15 +166,18 @@ preflight() {
   esac
   [ -d /run/systemd/system ] || die "Máy không chạy systemd. Cần máy ảo cài đầy đủ, không dùng container hay WSL."
 
-  local cpu mem disk
+  local cpu mb disk
   cpu=$(nproc)
-  mem=$(awk '/MemTotal/ { printf "%d", $2 / 1048576 + 0.5 }' /proc/meminfo)
+  mb=$(mem_mb)
   disk=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
   [ "$cpu" -ge 2 ] || die "Máy ảo có $cpu CPU, Wazuh cần tối thiểu 2 (khuyến nghị 4)"
-  [ "$mem" -ge 4 ] || die "Máy ảo có khoảng ${mem} GB RAM, Wazuh cần tối thiểu 4 GB (khuyến nghị 8 GB)"
+  [ "$mb" -ge 3000 ] || die "Máy ảo chỉ có ${mb} MB RAM. Cần tối thiểu 4 GB (khuyến nghị 8 GB), tắt máy ảo, tăng RAM rồi chạy lại."
   [ "$disk" -ge 20 ] || die "Ổ / chỉ còn ${disk} GB trống, cần tối thiểu 20 GB (khuyến nghị 50 GB)"
-  ok "Cấu hình: ${cpu} CPU, ${mem} GB RAM, ${disk} GB trống"
-  [ "$mem" -ge 7 ] || warn "RAM dưới 8 GB, Wazuh vẫn chạy nhưng Dashboard sẽ chậm"
+  ok "Cấu hình: ${cpu} CPU, ${mb} MB RAM, ${disk} GB trống"
+  if low_mem; then
+    warn "RAM dưới 8 GB, bật chế độ tiết kiệm bộ nhớ: thêm swap 4 GB, tắt module quét lỗ hổng (khóa học không dùng)."
+    warn "Với 4 GB RAM, nên mở Dashboard từ trình duyệt máy thật thay vì Firefox trong máy ảo."
+  fi
   [ "$cpu" -ge 4 ] || warn "Dưới 4 CPU, quá trình cài sẽ lâu hơn"
 
   if wazuh_ok; then
@@ -229,6 +237,29 @@ install_base() {
   else
     warn "Không bật được NTP, kiểm tra lại bằng lệnh: timedatectl"
   fi
+  if low_mem; then setup_swap; fi
+}
+
+# Máy ít RAM: thêm swap để Wazuh không bị hệ điều hành tắt khi thiếu bộ nhớ
+setup_swap() {
+  local swap_mb
+  swap_mb=$(awk '/SwapTotal/ { printf "%d", $2 / 1024 }' /proc/meminfo)
+  if [ "$swap_mb" -ge 2000 ]; then
+    ok "Máy đã có ${swap_mb} MB swap, không cần thêm"
+  elif [ -f /swapfile-lab ]; then
+    swapon /swapfile-lab 2>/dev/null || true
+    ok "Đã bật lại /swapfile-lab"
+  else
+    fallocate -l 4G /swapfile-lab 2>/dev/null || dd if=/dev/zero of=/swapfile-lab bs=1M count=4096 status=none
+    chmod 600 /swapfile-lab
+    mkswap /swapfile-lab >/dev/null
+    swapon /swapfile-lab
+    grep -q '^/swapfile-lab ' /etc/fstab || echo '/swapfile-lab none swap sw 0 0' >> /etc/fstab
+    ok "Đã thêm 4 GB swap (/swapfile-lab), giữ nguyên sau khi khởi động lại"
+  fi
+  # Chỉ dùng swap khi thật sự thiếu RAM, để Wazuh không bị chậm
+  printf 'vm.swappiness=10\n' > /etc/sysctl.d/99-blueteam-lab.conf
+  sysctl -q -p /etc/sysctl.d/99-blueteam-lab.conf || true
 }
 
 install_wazuh() {
@@ -253,7 +284,11 @@ install_wazuh() {
     args+=(-o)
     warn "Thấy Wazuh cài dở từ lần trước, cài đè lên"
   fi
-  if [ "${WAZUH_IGNORE_CHECKS:-0}" = 1 ]; then args+=(-i); fi
+  # Bộ cài Wazuh dừng nếu RAM dưới 3700 MB; máy ảo "4 GB" thường chỉ báo 3600 - 3900 MB
+  if [ "${WAZUH_IGNORE_CHECKS:-0}" = 1 ] || [ "$(mem_mb)" -lt 3700 ]; then
+    args+=(-i)
+    warn "RAM sát mức tối thiểu, cho bộ cài Wazuh bỏ qua bước kiểm tra phần cứng (-i)"
+  fi
   bash ./wazuh-install.sh "${args[@]}"
   wazuh_ok || die "Bộ cài Wazuh đã chạy xong nhưng dịch vụ chưa lên đủ. Xem /var/log/wazuh-install.log"
   [ -f "$LAB_DIR/wazuh-install-files.tar" ] && chmod 600 "$LAB_DIR/wazuh-install-files.tar"
@@ -296,9 +331,12 @@ setup_ossec() {
   [ -f "$NS_LOG" ] || install -m 644 /dev/null "$NS_LOG"
   [ -f "$OSSEC.lab-orig" ] || cp -p "$OSSEC" "$OSSEC.lab-orig"
   cp -p "$OSSEC" "$OSSEC.lab-prev"
-  OSSEC="$OSSEC" WL="$WHITELIST_IP" NS_LOG="$NS_LOG" LAB_USER="$LAB_USER" python3 - <<'PY'
+  local lowmem=0
+  if low_mem; then lowmem=1; fi
+  OSSEC="$OSSEC" WL="$WHITELIST_IP" NS_LOG="$NS_LOG" LAB_USER="$LAB_USER" LOWMEM="$lowmem" python3 - <<'PY'
 import os, re
 path, wl, ns, user = os.environ["OSSEC"], os.environ.get("WL", "").strip(), os.environ["NS_LOG"], os.environ["LAB_USER"]
+lowmem = os.environ.get("LOWMEM") == "1"
 with open(path, encoding="utf-8") as f:
     s = f.read()
 orig, notes = s, []
@@ -337,6 +375,13 @@ if wl and ("<white_list>%s</white_list>" % wl) not in s:
         raise SystemExit("ossec.conf không có khối <global>")
     s = s[:m.end()] + "\n    <white_list>%s</white_list>" % wl + s[m.end():]
     notes.append("thêm %s vào white_list" % wl)
+# Quét lỗ hổng tải và lập chỉ mục cả kho CVE, tốn nhiều RAM; khóa học không dùng module này
+if lowmem:
+    # Chỉ tìm <enabled> nằm bên trong khối <vulnerability-detection>, không lấn sang khối khác
+    pat = re.compile(r"(<vulnerability-detection>(?:(?!</vulnerability-detection>).)*?<enabled>)\s*yes\s*(</enabled>)", re.S)
+    if pat.search(s):
+        s = pat.sub(r"\1no\2", s, count=1)
+        notes.append("tắt module quét lỗ hổng (tiết kiệm RAM)")
 
 if s != orig:
     with open(path, "w", encoding="utf-8") as f:
@@ -615,6 +660,10 @@ summary() {
   printf 'Mở trình duyệt ngay trên máy ảo (ví dụ Firefox trên Kali) thì vào https://localhost\n'
   printf 'Trình duyệt sẽ cảnh báo chứng chỉ tự ký, bấm Advanced rồi Accept the Risk (hoặc Proceed) để vào Dashboard.\n'
   printf 'Kiểm tra lại bất cứ lúc nào: sudo lab-check\n'
+  if low_mem; then
+    printf '%sMáy ảo ít RAM:%s Dashboard mở lần đầu có thể mất 1 - 2 phút. Đóng bớt ứng dụng trong máy ảo,\n' "$C_WARN" "$C_0"
+    printf 'tốt nhất mở Dashboard bằng trình duyệt trên máy thật: https://%s\n' "$ip"
+  fi
   printf 'Nếu là máy ảo, nên chụp snapshot tên clean-before-training ngay bây giờ.\n'
   printf '%s==========================================================%s\n' "$C_OK" "$C_0"
 }

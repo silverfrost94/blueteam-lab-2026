@@ -33,13 +33,23 @@ Cài xong, màn hình in ra địa chỉ Dashboard, mật khẩu `admin` và tà
 ## Yêu cầu máy ảo
 
 - Kali Linux bản 2024 trở lên, hoặc Ubuntu 22.04 / 24.04, hoặc Debian 12
-- 4 vCPU, 8 GB RAM, 50 GB đĩa
+- Khuyến nghị 4 vCPU, 8 GB RAM, 50 GB đĩa. Tối thiểu 2 vCPU, 4 GB RAM, 20 GB đĩa trống
 - Có Internet để tải gói Wazuh
+
+### Máy ảo chỉ có 4 GB RAM
+
+Vẫn cài được. Khi RAM dưới 8 GB, script tự bật chế độ tiết kiệm bộ nhớ:
+
+- thêm 4 GB swap (`/swapfile-lab`) nếu máy chưa có swap, để Wazuh không bị hệ điều hành tắt khi thiếu RAM
+- tắt module quét lỗ hổng của Wazuh, module này tốn nhiều RAM và khóa học không dùng
+- cho bộ cài Wazuh bỏ qua bước kiểm tra phần cứng khi RAM báo dưới 3700 MB
+
+Khi học với 4 GB RAM: đóng bớt ứng dụng trong máy ảo, mở Dashboard bằng trình duyệt trên máy thật thay vì Firefox trong máy ảo. Dashboard mở lần đầu có thể mất 1 - 2 phút. Dưới 3 GB RAM thì script dừng ngay từ đầu.
 - Mạng host-only hoặc NAT riêng, không nối vào mạng nghiệp vụ
 
 ### Lưu ý riêng với Kali
 
-- Máy ảo Kali tải sẵn từ trang chủ thường chỉ để 2 GB RAM. Tắt máy ảo, nâng lên **8 GB RAM và 4 CPU** trước khi cài, dưới 4 GB script sẽ dừng ngay từ đầu.
+- Máy ảo Kali tải sẵn từ trang chủ thường chỉ để 2 GB RAM. Tắt máy ảo, nâng lên **ít nhất 4 GB RAM và 2 CPU** (tốt nhất 8 GB và 4 CPU) trước khi cài.
 - Lệnh `sudo` hỏi mật khẩu của tài khoản đang đăng nhập (máy ảo Kali tải sẵn mặc định là `kali`).
 - Bộ cài Wazuh sẽ in cảnh báo "The current system does not match with the list of recommended systems". Đây là cảnh báo bình thường, bộ cài vẫn tiếp tục.
 - Kali mặc định tắt SSH và không có `/var/log/auth.log`. Script tự bật SSH, cài `rsyslog` để có `auth.log` và đặt kiểu thời gian giống dòng log mẫu trong bài giảng.
