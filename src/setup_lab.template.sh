@@ -641,6 +641,9 @@ else printf '\e[31mKết quả: %d đạt, %d lỗi. Sửa theo gợi ý ở tr�
 [ "$fail" -eq 0 ]
 TOOL
   chmod 755 /usr/local/bin/lab-nightshift /usr/local/bin/lab-check
+  # sudo trên một số bản Kali không tìm lệnh trong /usr/local/bin, nên đặt thêm liên kết ở /usr/bin
+  ln -sfn /usr/local/bin/lab-check /usr/bin/lab-check
+  ln -sfn /usr/local/bin/lab-nightshift /usr/bin/lab-nightshift
   ok "Đã cài lệnh: sudo lab-check, sudo lab-nightshift"
 }
 

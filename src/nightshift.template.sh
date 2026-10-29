@@ -99,6 +99,18 @@ restart_manager() {
   fi
 }
 
+# Máy cài bằng setup_lab.sh bản cũ chỉ có lệnh trong /usr/local/bin, sudo trên một số bản Kali
+# không tìm ở đó (báo command not found), nên đặt thêm liên kết ở /usr/bin
+fix_cmd_links() {
+  local t
+  for t in lab-check lab-nightshift; do
+    if [ -x "/usr/local/bin/$t" ] && [ ! -e "/usr/bin/$t" ]; then
+      ln -s "/usr/local/bin/$t" "/usr/bin/$t" && ok "Sửa lệnh sudo $t (trước đây báo command not found)"
+    fi
+  done
+  return 0
+}
+
 # ----------------------------------------------------------------------------
 check_env() {
   [ "$(id -u)" -eq 0 ] || die "Cần quyền quản trị. Chạy lại: sudo bash $0"
@@ -222,6 +234,7 @@ dashboard_hint() {
 main() {
   parse_args "$@"
   check_env
+  fix_cmd_links
   if [ "$MODE" = status ]; then show_status; exit 0; fi
 
   local n

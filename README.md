@@ -107,6 +107,8 @@ Script dừng lại và in `CÀI ĐẶT DỪNG Ở BƯỚC: ...`. Sửa nguyên 
 - Cổng 443 bị chiếm: tắt dịch vụ web đang chạy trên máy ảo.
 - Lỗi khi cài Wazuh: xem `/var/log/wazuh-install.log`.
 
+- `sudo lab-check` hoặc `sudo lab-nightshift` báo `command not found`: máy cài bằng script bản trước ngày 29/10/2026. Chạy lại lệnh cài, hoặc lệnh nạp `nightshift.sh`, để script đặt thêm liên kết lệnh ở `/usr/bin`. Trong lúc chờ, gõ đường dẫn đầy đủ: `sudo /usr/local/bin/lab-check`.
+
 Nhật ký đầy đủ: `sudo less /var/log/blueteam-lab-setup.log`
 
 ## Dành cho người bảo trì
