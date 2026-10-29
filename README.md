@@ -56,14 +56,14 @@ Khi học với 4 GB RAM: đóng bớt ứng dụng trong máy ảo, mở Dashbo
 
 ## Script làm những gì
 
-Toàn bộ các bước A.1 - A.8 Phụ lục A tài liệu học viên:
+Toàn bộ phần cấu hình ở Phụ lục A tài liệu học viên:
 
 - cài Wazuh 4.14 all-in-one (indexer, manager, dashboard)
 - bật đồng bộ thời gian, cài `openssh-server`, `tcpdump`, `rsyslog`
 - tạo tài khoản `labuser`, cho SSH bằng mật khẩu
 - cho Wazuh đọc `/var/log/auth.log`, bật giám sát toàn vẹn tệp thời gian thực
 - khai báo nguồn `/var/log/lab/nightshift.json`, thêm bộ rule 100300 - 100306
-- đưa IP của máy đang SSH vào `white_list` để không bị active response chặn
+- đưa `127.0.0.1` và IP của máy đang SSH vào `white_list` để không bị active response chặn (Bài 2 dò mật khẩu vào chính máy qua `127.0.0.1`)
 - chép sẵn dữ liệu Night Shift (đã nhúng trong script)
 
 Script cố ý **không** nạp dữ liệu Night Shift (làm trong giờ nghỉ) và **không** thêm rule 100100 (học viên tự thêm ở Bài thực hành 2).

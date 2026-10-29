@@ -3,11 +3,11 @@
 #  setup_lab.sh - Cài đặt môi trường thực hành
 #  Chương trình đào tạo Đội phòng thủ (Blue Team) 2026
 #
-#  Làm trọn các bước A.1 - A.8 Phụ lục A tài liệu học viên trên một máy ảo
+#  Làm thay toàn bộ phần cấu hình ở Phụ lục A tài liệu học viên trên một máy ảo
 #  Kali Linux, Ubuntu hoặc Debian: Wazuh 4.14 all-in-one, tài khoản labuser,
 #  SSH bằng mật khẩu,
 #  Wazuh đọc auth.log, FIM, nguồn dữ liệu và bộ rule Night Shift.
-#  Cố ý KHÔNG làm hai việc: không nạp dữ liệu Night Shift (bước A.9, làm
+#  Cố ý KHÔNG làm hai việc: không nạp dữ liệu Night Shift (bước A.6, làm
 #  trong giờ nghỉ bằng lệnh lab-nightshift) và không thêm rule 100100
 #  (học viên tự thêm ở Bài thực hành 2).
 #
@@ -392,11 +392,11 @@ def before_last_close(block):
     s = s[:i] + block + s[i:]
 
 if not has_location("/var/log/auth.log"):
-    before_last_close("  <!-- Blue Team Lab, A.4 -->\n  <localfile>\n    <log_format>syslog</log_format>\n"
+    before_last_close("  <!-- Blue Team Lab: auth.log cho Bài 1, 2 -->\n  <localfile>\n    <log_format>syslog</log_format>\n"
                       "    <location>/var/log/auth.log</location>\n  </localfile>\n\n")
     notes.append("thêm nguồn /var/log/auth.log")
 if not has_location(ns):
-    before_last_close("  <!-- Blue Team Lab, A.7 -->\n  <localfile>\n    <log_format>json</log_format>\n"
+    before_last_close("  <!-- Blue Team Lab: nguồn Night Shift cho Bài 3 -->\n  <localfile>\n    <log_format>json</log_format>\n"
                       "    <location>" + ns + "</location>\n  </localfile>\n\n")
     notes.append("thêm nguồn " + ns)
 fim = "/home/%s/.ssh" % user
@@ -404,17 +404,20 @@ if fim not in s:
     m = re.search(r"<syscheck>", s)
     if not m:
         raise SystemExit("ossec.conf không có khối <syscheck>")
-    add = ("\n    <!-- Blue Team Lab, A.6 -->"
+    add = ("\n    <!-- Blue Team Lab: FIM cho bài B.2 -->"
            '\n    <directories realtime="yes" check_all="yes" report_changes="yes">/etc/cron.d</directories>'
            '\n    <directories realtime="yes" check_all="yes" report_changes="yes">' + fim + "</directories>")
     s = s[:m.end()] + add + s[m.end():]
     notes.append("thêm FIM thời gian thực cho /etc/cron.d và " + fim)
-if wl and ("<white_list>%s</white_list>" % wl) not in s:
+# 127.0.0.1 luôn được miễn chặn: Bài thực hành 2 dò mật khẩu vào chính máy này qua 127.0.0.1
+for ip in ["127.0.0.1"] + ([wl] if wl else []):
+    if ("<white_list>%s</white_list>" % ip) in s:
+        continue
     m = re.search(r"<global>", s)
     if not m:
         raise SystemExit("ossec.conf không có khối <global>")
-    s = s[:m.end()] + "\n    <white_list>%s</white_list>" % wl + s[m.end():]
-    notes.append("thêm %s vào white_list" % wl)
+    s = s[:m.end()] + "\n    <white_list>%s</white_list>" % ip + s[m.end():]
+    notes.append("thêm %s vào white_list" % ip)
 # Quét lỗ hổng tải và lập chỉ mục cả kho CVE, tốn nhiều RAM; khóa học không dùng module này
 if lowmem:
     # Chỉ tìm <enabled> nằm bên trong khối <vulnerability-detection>, không lấn sang khối khác
@@ -450,7 +453,7 @@ setup_rules() {
   else
     cat >> "$RULES" <<'XML'
 
-<!-- Blue Team Lab 2026, A.7: bộ rule cho Bài thực hành 3 -->
+<!-- Blue Team Lab 2026: bộ rule cho Bài thực hành 3 -->
 <group name="local,lab,nightshift,">
   <rule id="100300" level="3">
     <decoded_as>json</decoded_as>
@@ -526,7 +529,7 @@ setup_tools() {
   [ "$(wc -l < "$LAB_DIR/data/nightshift_sample.json")" -eq 346 ] || die "Dữ liệu Night Shift không đủ 346 dòng"
   ok "Dữ liệu và script nằm ở $LAB_DIR/data"
 
-  # Bản sao trong thư mục home của người chạy script, để làm được đúng lệnh ở bước A.9
+  # Bản sao trong thư mục home của người chạy script, để làm bài bổ trợ và bài về nhà
   if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ] && [ "$SUDO_USER" != "$LAB_USER" ]; then
     local home
     home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
@@ -540,7 +543,7 @@ setup_tools() {
 
   cat > /usr/local/bin/lab-nightshift <<'TOOL'
 #!/usr/bin/env bash
-# Nạp dữ liệu Night Shift cho Bài thực hành 3 (bước A.9). Chỉ nạp một lần.
+# Nạp dữ liệu Night Shift cho Bài thực hành 3 (bước A.6). Chỉ nạp một lần.
 #   sudo lab-nightshift          xem tệp nguồn đang có bao nhiêu dòng
 #   sudo lab-nightshift load     nạp 346 sự kiện
 NS_LOG=/var/log/lab/nightshift.json
@@ -800,7 +803,7 @@ load_env() {
 # ----------------------------------------------------------------------------
 payload() {
   cat <<'B64'
-H4sIALva4moC/+19XW/jWHZgPftXME4asBNZ5v0iRWU8SKPcH7XTVdUpu6Ym0yoYtETbakuUlqTs
+H4sIAC7e4moC/+19XW/jWHZgPftXME4asBNZ5v0iRWU8SKPcH7XTVdUpu6Ym0yoYtETbakuUlqTs
 ru3th3lYLIIgD4M8BHkIMJMgCLCbQbKYBYJ0PexDLfZ/+J/svZf6oEhKOrz8kOQSZ7psS+Thufee
 e77PuW73+ia48G+6V0G97d89KePS+WVQKn/yK/bTMLCBnyCGDUR0ZojPETYYeqLpTyq4Rn5gexwV
 bzAIlt236vstvYJu37kYBe2aPxh5bad2M/CD2sh3vJpz57hBreMEdre3h3VsHCH9SDfPdb0p///L
