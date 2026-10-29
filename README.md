@@ -1,10 +1,10 @@
 # Môi trường thực hành Đội phòng thủ (Blue Team) 2026
 
-Script cài toàn bộ môi trường thực hành cho chương trình đào tạo Đội phòng thủ 2026 trên một máy ảo Ubuntu: Wazuh 4.14 all-in-one, tài khoản thực hành, dữ liệu và bộ rule cho bài diễn tập thu nhỏ "Ca trực đêm".
+Script cài toàn bộ môi trường thực hành cho chương trình đào tạo Đội phòng thủ 2026 trên một máy ảo Kali Linux (hoặc Ubuntu, Debian): Wazuh 4.14 all-in-one, tài khoản thực hành, dữ liệu và bộ rule cho bài diễn tập thu nhỏ "Ca trực đêm".
 
 ## Cài đặt
 
-SSH vào máy ảo Ubuntu, chạy đúng một lệnh:
+Mở Terminal trên máy ảo Kali (hoặc SSH vào máy ảo), chạy đúng một lệnh:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/silverfrost94/blueteam-lab-2026/main/setup_lab.sh -o setup_lab.sh && sudo bash setup_lab.sh
@@ -28,14 +28,21 @@ Quá trình cài mất khoảng 15 - 25 phút và tải khoảng 1 GB. Script ch
 sudo tail -f /var/log/blueteam-lab-setup.log
 ```
 
-Cài xong, màn hình in ra địa chỉ Dashboard, mật khẩu `admin` và tài khoản SSH. Thông tin này được lưu ở `/root/blueteam-lab-info.txt`.
+Cài xong, màn hình in ra địa chỉ Dashboard, mật khẩu `admin` và tài khoản SSH. Thông tin này được lưu ở `/root/blueteam-lab-info.txt`. Trên Kali có thể mở Firefox ngay trong máy ảo và vào `https://localhost`.
 
 ## Yêu cầu máy ảo
 
-- Ubuntu Server 22.04 hoặc 24.04
+- Kali Linux bản 2024 trở lên, hoặc Ubuntu 22.04 / 24.04, hoặc Debian 12
 - 4 vCPU, 8 GB RAM, 50 GB đĩa
 - Có Internet để tải gói Wazuh
 - Mạng host-only hoặc NAT riêng, không nối vào mạng nghiệp vụ
+
+### Lưu ý riêng với Kali
+
+- Máy ảo Kali tải sẵn từ trang chủ thường chỉ để 2 GB RAM. Tắt máy ảo, nâng lên **8 GB RAM và 4 CPU** trước khi cài, dưới 4 GB script sẽ dừng ngay từ đầu.
+- Lệnh `sudo` hỏi mật khẩu của tài khoản đang đăng nhập (máy ảo Kali tải sẵn mặc định là `kali`).
+- Bộ cài Wazuh sẽ in cảnh báo "The current system does not match with the list of recommended systems". Đây là cảnh báo bình thường, bộ cài vẫn tiếp tục.
+- Kali mặc định tắt SSH và không có `/var/log/auth.log`. Script tự bật SSH, cài `rsyslog` để có `auth.log` và đặt kiểu thời gian giống dòng log mẫu trong bài giảng.
 
 ## Script làm những gì
 

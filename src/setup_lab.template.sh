@@ -4,13 +4,14 @@
 #  Chương trình đào tạo Đội phòng thủ (Blue Team) 2026
 #
 #  Làm trọn các bước A.1 - A.8 Phụ lục A tài liệu học viên trên một máy ảo
-#  Ubuntu: Wazuh 4.14 all-in-one, tài khoản labuser, SSH bằng mật khẩu,
+#  Kali Linux, Ubuntu hoặc Debian: Wazuh 4.14 all-in-one, tài khoản labuser,
+#  SSH bằng mật khẩu,
 #  Wazuh đọc auth.log, FIM, nguồn dữ liệu và bộ rule Night Shift.
 #  Cố ý KHÔNG làm hai việc: không nạp dữ liệu Night Shift (bước A.9, làm
 #  trong giờ nghỉ bằng lệnh lab-nightshift) và không thêm rule 100100
 #  (học viên tự thêm ở Bài thực hành 2).
 #
-#  Cách chạy (một lệnh, trên máy ảo Ubuntu):
+#  Cách chạy (một lệnh, trên máy ảo):
 #    curl -fsSL <URL>/setup_lab.sh -o setup_lab.sh && sudo bash setup_lab.sh
 #
 #  Tùy chọn:
@@ -56,7 +57,7 @@ warn() { printf '  %sCHÚ Ý%s  %s\n' "$C_WARN" "$C_0" "$*"; }
 die()  { printf '\n%sLỖI:%s %s\n' "$C_ERR" "$C_0" "$*"; exit 1; }
 
 usage() {
-  sed -n '3,24p' "$0" 2>/dev/null | sed 's/^# \{0,2\}//' || true
+  sed -n '3,25p' "$0" 2>/dev/null | sed 's/^# \{0,2\}//' || true
 }
 
 need_root() {
@@ -152,10 +153,13 @@ preflight() {
   # shellcheck disable=SC1091
   . /etc/os-release
   case "${ID:-}" in
+    kali)
+      ok "Hệ điều hành: ${PRETTY_NAME:-Kali}"
+      warn "Kali không nằm trong danh sách Wazuh khuyến nghị. Bộ cài sẽ in cảnh báo này, vẫn cài bình thường." ;;
     ubuntu|debian) ok "Hệ điều hành: ${PRETTY_NAME:-$ID}" ;;
-    *) die "Script chỉ chạy trên Ubuntu hoặc Debian (máy này: ${PRETTY_NAME:-không rõ})" ;;
+    *) die "Script chỉ chạy trên Kali Linux, Ubuntu hoặc Debian (máy này: ${PRETTY_NAME:-không rõ})" ;;
   esac
-  [ -d /run/systemd/system ] || die "Máy không chạy systemd. Cần máy ảo Ubuntu Server đầy đủ, không dùng container hay WSL."
+  [ -d /run/systemd/system ] || die "Máy không chạy systemd. Cần máy ảo cài đầy đủ, không dùng container hay WSL."
 
   local cpu mem disk
   cpu=$(nproc)
@@ -196,8 +200,30 @@ install_base() {
   "${APT[@]}" update
   "${APT[@]}" install curl tar gnupg apt-transport-https lsb-release ca-certificates \
     openssh-server tcpdump rsyslog python3 >/dev/null
-  systemctl enable --now rsyslog >/dev/null 2>&1 || true
   ok "Đã có openssh-server, tcpdump, rsyslog, python3"
+
+  # Kali và các bản Debian mới chỉ ghi log vào journald, rsyslog mới tạo ra /var/log/auth.log.
+  # Ép kiểu thời gian truyền thống (Oct  9 10:05:32) cho giống dòng log mẫu trong bài giảng.
+  if [ ! -f /etc/rsyslog.d/00-lab-traditional.conf ]; then
+    printf '# %s: ghi log theo kiểu thời gian truyền thống\n$ActionFileDefaultTemplate RSYSLOG_TraditionalFileFormat\n' \
+      "$LAB_NAME" > /etc/rsyslog.d/00-lab-traditional.conf
+    if ! rsyslogd -N1 >/dev/null 2>&1; then
+      rm -f /etc/rsyslog.d/00-lab-traditional.conf
+      warn "rsyslog không nhận kiểu thời gian truyền thống, giữ kiểu mặc định"
+    fi
+  fi
+  systemctl enable rsyslog >/dev/null 2>&1 || true
+  systemctl restart rsyslog
+  logger -p auth.info "${LAB_NAME}: kiem tra auth.log" && sleep 1
+  [ -f /var/log/auth.log ] || die "rsyslog không tạo ra /var/log/auth.log. Xem: sudo systemctl status rsyslog"
+  ok "rsyslog đang ghi /var/log/auth.log"
+
+  if ! timedatectl set-ntp true 2>/dev/null; then
+    # Máy chưa có dịch vụ đồng bộ giờ nào (hay gặp trên Kali): cài systemd-timesyncd
+    if ! dpkg -s chrony >/dev/null 2>&1 && ! dpkg -s ntpsec >/dev/null 2>&1 && ! dpkg -s ntp >/dev/null 2>&1; then
+      "${APT[@]}" install systemd-timesyncd >/dev/null || true
+    fi
+  fi
   if timedatectl set-ntp true 2>/dev/null; then
     ok "Đã bật đồng bộ thời gian (NTP)"
   else
@@ -586,7 +612,8 @@ summary() {
   printf '\n%s==================== LAB ĐÃ SẴN SÀNG ====================%s\n' "$C_OK" "$C_0"
   sed -n '3,9p' "$INFO"
   printf '\nThông tin trên được lưu ở %s (xem lại: sudo cat %s)\n' "$INFO" "$INFO"
-  printf 'Trình duyệt sẽ cảnh báo chứng chỉ tự ký, bấm Advanced rồi Proceed để vào Dashboard.\n'
+  printf 'Mở trình duyệt ngay trên máy ảo (ví dụ Firefox trên Kali) thì vào https://localhost\n'
+  printf 'Trình duyệt sẽ cảnh báo chứng chỉ tự ký, bấm Advanced rồi Accept the Risk (hoặc Proceed) để vào Dashboard.\n'
   printf 'Kiểm tra lại bất cứ lúc nào: sudo lab-check\n'
   printf 'Nếu là máy ảo, nên chụp snapshot tên clean-before-training ngay bây giờ.\n'
   printf '%s==========================================================%s\n' "$C_OK" "$C_0"
