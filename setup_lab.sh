@@ -803,7 +803,7 @@ load_env() {
 # ----------------------------------------------------------------------------
 payload() {
   cat <<'B64'
-H4sIAC7e4moC/+19XW/jWHZgPftXME4asBNZ5v0iRWU8SKPcH7XTVdUpu6Ym0yoYtETbakuUlqTs
+H4sIAAAAAAAC/+19XW/jWHZgPftXME4asBNZ5v0iRWU8SKPcH7XTVdUpu6Ym0yoYtETbakuUlqTs
 ru3th3lYLIIgD4M8BHkIMJMgCLCbQbKYBYJ0PexDLfZ/+J/svZf6oEhKOrz8kOQSZ7psS+Thufee
 e77PuW73+ia48G+6V0G97d89KePS+WVQKn/yK/bTMLCBnyCGDUR0ZojPETYYeqLpTyq4Rn5gexwV
 bzAIlt236vstvYJu37kYBe2aPxh5bad2M/CD2sh3vJpz57hBreMEdre3h3VsHCH9SDfPdb0p///L

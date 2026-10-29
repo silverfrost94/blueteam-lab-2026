@@ -66,9 +66,26 @@ Toàn bộ phần cấu hình ở Phụ lục A tài liệu học viên:
 - đưa `127.0.0.1` và IP của máy đang SSH vào `white_list` để không bị active response chặn (Bài 2 dò mật khẩu vào chính máy qua `127.0.0.1`)
 - chép sẵn dữ liệu Night Shift (đã nhúng trong script)
 
-Script cố ý **không** nạp dữ liệu Night Shift (làm trong giờ nghỉ) và **không** thêm rule 100100 (học viên tự thêm ở Bài thực hành 2).
+Script cố ý **không** nạp dữ liệu Night Shift (làm trong giờ nghỉ, xem mục dưới) và **không** thêm rule 100100 (học viên tự thêm ở Bài thực hành 2).
 
 Chạy lại nhiều lần không sao, bước nào đã xong sẽ được bỏ qua.
+
+## Nạp dữ liệu Ca trực đêm cho Bài thực hành 3
+
+Làm đầu giờ nghỉ giải lao, khi giảng viên yêu cầu. Trên máy ảo đã cài bằng `setup_lab.sh`, chạy một lệnh:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/silverfrost94/blueteam-lab-2026/main/nightshift.sh -o nightshift.sh && sudo bash nightshift.sh
+```
+
+Script tự giải nén dữ liệu (đã nhúng sẵn), kiểm tra Wazuh đã khai báo nguồn `/var/log/lab/nightshift.json` và bộ rule 100300 - 100306 chưa, thiếu thì thêm vào và khởi động lại manager, rồi nạp 346 sự kiện và chờ Wazuh sinh đủ alert. Đã nạp rồi thì chạy lại chỉ báo kết quả, không nạp trùng.
+
+| Lệnh | Tác dụng |
+| --- | --- |
+| `sudo bash nightshift.sh --status` | Chỉ xem đã nạp chưa |
+| `sudo bash nightshift.sh --force` | Nạp thêm một lần nữa (Dashboard sẽ ra 692 kết quả) |
+
+Lệnh `sudo lab-nightshift load` có sẵn trên máy sau khi cài cũng nạp được, nhưng không tự sửa cấu hình khi thiếu.
 
 ## Lệnh sau khi cài
 
@@ -94,4 +111,4 @@ Nhật ký đầy đủ: `sudo less /var/log/blueteam-lab-setup.log`
 
 ## Dành cho người bảo trì
 
-`setup_lab.sh` được sinh từ `src/setup_lab.template.sh` bằng `src/build_setup.py`, script này nhúng dữ liệu Night Shift (tar.gz, base64) vào template. Sửa template hoặc dữ liệu thì chạy lại `build_setup.py` để tạo bản mới.
+`setup_lab.sh` và `nightshift.sh` được sinh từ `src/setup_lab.template.sh`, `src/nightshift.template.sh` bằng `src/build_setup.py`. Script này nhúng dữ liệu Night Shift (tar.gz, base64) vào cả hai, và chép bộ rule Night Shift từ template của `setup_lab.sh` sang `nightshift.sh` để hai bên luôn khớp. Sửa template hoặc dữ liệu thì chạy lại `build_setup.py` để tạo bản mới.
