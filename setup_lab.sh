@@ -717,7 +717,10 @@ start_detached() {
     : > "$LOG"
     rm -f "$STATE"
     systemctl reset-failed "$UNIT" >/dev/null 2>&1 || true
+    # IgnoreSIGPIPE=no: xử lý SIGPIPE như shell thường, tránh thông báo "tr: write error: Broken pipe"
+    # vô hại khi bộ cài Wazuh sinh mật khẩu
     systemd-run --quiet --unit="$UNIT" --description="$LAB_NAME setup" \
+      --property=IgnoreSIGPIPE=no \
       --setenv=HOME=/root --setenv=WAZUH_IGNORE_CHECKS="${WAZUH_IGNORE_CHECKS:-0}" \
       /bin/bash "$self" --run
   fi
@@ -748,7 +751,7 @@ load_env() {
 # ----------------------------------------------------------------------------
 payload() {
   cat <<'B64'
-H4sIAMfV4moC/+19XW/jWHZgPftXME4asBNZ5v0iRWU8SKPcH7XTVdUpu6Ym0yoYtETbakuUlqTs
+H4sIAOvX4moC/+19XW/jWHZgPftXME4asBNZ5v0iRWU8SKPcH7XTVdUpu6Ym0yoYtETbakuUlqTs
 ru3th3lYLIIgD4M8BHkIMJMgCLCbQbKYBYJ0PexDLfZ/+J/svZf6oEhKOrz8kOQSZ7psS+Thufee
 e77PuW73+ia48G+6V0G97d89KePS+WVQKn/yK/bTMLCBnyCGDUR0ZojPETYYeqLpTyq4Rn5gexwV
 bzAIlt236vstvYJu37kYBe2aPxh5bad2M/CD2sh3vJpz57hBreMEdre3h3VsHCH9SDfPdb0p///L
